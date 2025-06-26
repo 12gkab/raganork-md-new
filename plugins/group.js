@@ -12,9 +12,17 @@ const { ADMIN_ACCESS, HANDLERS } = require('../config');
 const {
     Module
 } = require('../main');
-const { fetchFromStore, User, UserStats, getFullMessage } = require('../core/store');
-
+const { fetchFromStore, getFullMessage, fetchRecentChats } = require('../core/store');
+const {
+    isLid,
+    isJid,
+    getBotId,
+    getNumericId,
+    getSudoIdentifier,
+    isPrivateMessage
+} = require("./utils/lid-helper");
 var handler = HANDLERS !== 'false' ? HANDLERS.split("")[0] : ""
+
 
 Module({
     pattern: 'clear ?(.*)',
@@ -29,7 +37,8 @@ Module({
       },message.jid)
     return  await message.send("_Chat cleared!_")  
 }));
-    Module({
+
+Module({
     pattern: 'kick ?(.*)',
     fromMe: false,
     desc: Lang.KICK_DESC,
@@ -68,7 +77,7 @@ Module({
             return;
         }
     }
-    const user = message.mention[0] || message.reply_message.jid
+    const user = message.mention?.[0] || message.reply_message?.jid
     if (!user) return await message.sendReply(Lang.NEED_USER)
     var admin = await isAdmin(message);
     if (!admin) return await message.sendReply(Lang.NOT_ADMIN)
@@ -88,7 +97,7 @@ Module({
     usage: '.add 919876543210'
 }, (async (message, match) => {
     if (!message.isGroup) return await message.sendReply(Lang.GROUP_COMMAND)
-    var init = match[1] || message.reply_message.jid.split("@")[0]
+    var init = match[1] || message.reply_message?.jid.split("@")[0]
     if (!init) return await message.sendReply(Lang.NEED_USER)
     var admin = await isAdmin(message);
     if (!admin) return await message.sendReply(Lang.NOT_ADMIN)
@@ -105,7 +114,7 @@ Module({
 }, (async (message, match) => {
     let adminAccesValidated = ADMIN_ACCESS ? await isAdmin(message,message.sender) : false;
     if (message.fromOwner || adminAccesValidated) {
-    const user = message.mention[0] || message.reply_message.jid
+    const user = message.mention?.[0] || message.reply_message?.jid
     if (!user) return await message.sendReply(Lang.NEED_USER)
     if (!message.isGroup) return await message.sendReply(Lang.GROUP_COMMAND)
     var admin = await isAdmin(message);
@@ -179,7 +188,6 @@ Module({
     if (!message.isGroup) return await message.sendReply("_Leave from where? This is a group command bruh!_")
     return await message.client.groupLeave(message.jid);
 }))
-
 Module({
     pattern: 'quoted',
     fromMe: false,
@@ -187,26 +195,21 @@ Module({
     usage: '.quoted (reply to a quoted message)',
     use: 'group'
 }, (async (message, match) => {
-    //if (!message.isGroup) return await message.sendReply("_Group command!_")
+    if (!message.isGroup) return await message.sendReply("_Group command!_")
     let adminAccesValidated = ADMIN_ACCESS ? await isAdmin(message,message.sender) : false;
     if (message.fromOwner || adminAccesValidated) {
         if (!message.reply_message) {
             return await message.sendReply("_Please reply to a message!_");
         }
-
         try {
-
             const repliedMessage = await getFullMessage(message.reply_message.id+"_");
-
             if (!repliedMessage.found) {
                 return await message.sendReply("_Original message not found in database!_");
             }
-
             const messageData = repliedMessage.messageData;
             let quotedMessageId = null;
             let quotedMessage = null;
             let participant = null;
-
             if (messageData.message) {
                 const msgKeys = Object.keys(messageData.message);
                 for (const key of msgKeys) {
@@ -219,18 +222,13 @@ Module({
                     }
                 }
             }
-
             if (!quotedMessageId) {
                 return await message.sendReply("_The replied message doesn't contain a quoted message!_");
             }
-
             const originalQuoted = await getFullMessage(quotedMessageId+"_");
-
             if (originalQuoted.found) {
-
                 return await message.forwardMessage(message.jid, originalQuoted.messageData);
             } else if (quotedMessage) {
-
                 const reconstructedMsg = {
                     key: {
                         remoteJid: message.jid,
@@ -259,11 +257,9 @@ Module({
 }, (async (message, match) => {
     let adminAccesValidated = ADMIN_ACCESS ? await isAdmin(message,message.sender) : false;
     if (message.fromOwner || adminAccesValidated) {
-
         var users = (await message.client.groupMetadata(message.jid)).participants.map(e=>e.id);
-        if (message.mention[0]) users = message.mention;
-        if (message.reply_message && !message.mention.length) users = [message.reply_message.jid];
-
+        if (message.mention?.[0]) users = message.mention;
+        if (message.reply_message && !message.mention.length) users = [message.reply_message?.jid];
         function timeSince(date) {
             if (!date) return "Never";
             var seconds = Math.floor((new Date() - new Date(date)) / 1000);
@@ -279,25 +275,18 @@ Module({
             if (interval > 1) { return Math.floor(interval) + " minutes ago" }
             return Math.floor(seconds) + " seconds ago";
         }
-
         const flc = (x) => {
             if (x === "undefined") x = "others"
             try { return x.charAt(0).toUpperCase() + x.slice(1) } catch { return x }
         }
-
         let userStats = await fetchFromStore(message.jid);
-
         let final_msg = "_Messages sent by each users_\n\n";
-
         for (let user of users) {
-
             let userStat = userStats.find(stat => stat.userJid === user);
-
             if (userStat) {
                 let count = userStat.totalMessages;
                 let name = userStat.User?.name?.replace(/[\r\n]+/gm, "") || "Unknown";
                 let lastMsg = timeSince(userStat.lastMessageAt);
-
                 let types_msg = "\n";
                 if (userStat.textMessages > 0) types_msg += `_Text: *${userStat.textMessages}*_\n`;
                 if (userStat.imageMessages > 0) types_msg += `_Image: *${userStat.imageMessages}*_\n`;
@@ -305,14 +294,11 @@ Module({
                 if (userStat.audioMessages > 0) types_msg += `_Audio: *${userStat.audioMessages}*_\n`;
                 if (userStat.stickerMessages > 0) types_msg += `_Sticker: *${userStat.stickerMessages}*_\n`;
                 if (userStat.otherMessages > 0) types_msg += `_Others: *${userStat.otherMessages}*_\n`;
-
                 final_msg += `_Participant: *+${user.split("@")[0]}*_\n_Name: *${name}*_\n_Total msgs: *${count}*_\n_Last msg: *${lastMsg}*_${types_msg}\n\n`;
             } else {
-
                 final_msg += `_Participant: *+${user.split("@")[0]}*_\n_Name: *Unknown*_\n_Total msgs: *0*_\n_Last msg: *Never*_\n\n`;
             }
         }
-
         return await message.sendReply(final_msg);
     }
 }))
@@ -326,7 +312,7 @@ Module({
     if (!message.isGroup) return await message.sendReply(Lang.GROUP_COMMAND)
     let adminAccesValidated = ADMIN_ACCESS ? await isAdmin(message,message.sender) : false;
     if (message.fromOwner || adminAccesValidated) {
-    const user = message.mention[0] || message.reply_message.jid
+    const user = message.mention?.[0] || message.reply_message?.jid
     if (!user) return await message.sendReply(Lang.NEED_USER)
     var admin = await isAdmin(message);
     if (!admin) return await message.sendReply(Lang.NOT_ADMIN)
@@ -334,7 +320,7 @@ Module({
         text: mentionjid(user) + Lang.DEMOTED,
         mentions: [user]
     })
-    await message.client.groupParticipantsUpdate(message.jid, [message.reply_message.jid], "demote")
+    await message.client.groupParticipantsUpdate(message.jid, [message.reply_message?.jid], "demote")
 }}))
 Module({
     pattern: 'mute ?(.*)',
@@ -387,7 +373,7 @@ Module({
     if (message.isGroup){
     let adminAccesValidated = ADMIN_ACCESS && message.isGroup ? await isAdmin(message,message.sender) : false;
     if (message.fromOwner || adminAccesValidated) {
-    var jid = message.reply_message.jid || message.jid
+    var jid = message.reply_message?.jid || message.jid
     await message.sendReply(jid)
     }
     } else {
@@ -501,10 +487,10 @@ var g2 = (await message.client.groupMetadata(message.jid))
 var common = g1.participants.filter(({ id: id1 }) => g2.participants.some(({ id: id2 }) => id2 === id1));
 var jids = [];
 var msg = `Kicking common participants of:* ${g1.subject} & ${g2.subject} \n_count: ${common.length} \n`
-common.map(e=>e.id).filter(e=>!e.includes(message.myjid)).map(async s => {
-msg += "```@"+s.split("@")[0]+"```\n"
-jids.push(s.split("@")[0]+"@s.whatsapp.net")
-})    
+common.map(e=>e.id).filter(e=>!e.includes(getNumericId(getBotId(message.client)))).map(async s => {
+msg += "```@"+getNumericId(s)+"```\n"
+jids.push(s)
+})
 await message.client.sendMessage(message.jid, {
         text: msg,
         mentions: jids
@@ -550,38 +536,42 @@ msg += "```"+s.id.split("@")[0]+"``` \n"
 })    
 return await message.sendReply(msg)
 }}));
-
 Module({
-    pattern: 'tag(?:all|admin)?',
+    pattern: 'tag(all|admin)? ?(.*)?',
     fromMe: false,
     desc: Lang.TAGALL_DESC,
     use: 'group',
-    usage: '.tag (reply to message)\n.tagall (tag everyone)\n.tagadmin (tag admins only)'
+    usage: '.tag (reply to message)\n.tagall (tag everyone)\n.tagadmin (tag admins only)\n.tag 120363355307899193@g.us (tag in specific group)'
 }, async (message, match) => {
-  if (!message.isGroup) return await message.sendReply(Lang.GROUP_COMMAND);
-
+  const groupJidMatch = match[2]?.match(/(\d+@g\.us)/);
+  if (groupJidMatch) {
+    message.jid = groupJidMatch[1];
+  } else if (!message.isGroup) {
+    return await message.sendReply(Lang.GROUP_COMMAND);
+  }
   const adminAccessValidated = ADMIN_ACCESS ? await isAdmin(message, message.sender) : false;
   if (!(message.fromOwner || adminAccessValidated)) return;
-
-  const { participants } = await message.client.groupMetadata(message.jid);
-  const isTagAdmin = match[0]?.includes('admin');
-  const isTagAll = match[0]?.includes('all');
-  const isReply = !!message.reply_message;
-
-  if (!isReply && !isTagAdmin && !isTagAll) {
-    return await message.sendReply(`_Tag what?_\n\n${handler}tag \`admin\`\n${handler}tag \`all\`\n${handler}tag \`(reply)\``);
+  let participants;
+  try {
+    const groupMetadata = await message.client.groupMetadata(message.jid);
+    participants = groupMetadata.participants;
+  } catch (error) {
+    return await message.sendReply('_Error: Unable to fetch group metadata. Please check the group ID._');
   }
-
+  const isTagAdmin = match[1]?.includes('admin');
+  const isTagAll = match[1]?.includes('all');
+  const isReply = !!message.reply_message;
+  if (!isReply && !isTagAdmin && !isTagAll) {
+    return await message.sendReply(`_Tag what?_\n\n${handler}tag \`admin\`\n${handler}tag \`all\`\n${handler}tag \`(reply)\`\n${handler}tag \`120363355307899193@g.us\``);
+  }
   const targets = [];
   let msgText = '';
-
   for (let i = 0; i < participants.length; i++) {
     const p = participants[i];
     if (isTagAdmin && !p.admin) continue;
     targets.push(p.id.replace('c.us', 's.whatsapp.net'));
     msgText += `${targets.length}. @${p.id.split('@')[0]}\n`;
   }
-
   if (isReply) {
     await message.client.sendMessage(message.jid, {
       forward: message.quoted,
@@ -594,7 +584,6 @@ Module({
     });
   }
 });
-
 Module({
     pattern: 'block ?(.*)',
     fromMe: true,
@@ -604,7 +593,7 @@ Module({
 }, (async (message, match) => {
     var isGroup = message.jid.endsWith('@g.us')
     var user = message.jid
-    if (isGroup) user = message.mention[0] || message.reply_message.jid
+    if (isGroup) user = message.mention?.[0] || message.reply_message?.jid
     await message.client.updateBlockStatus(user, "block");
 }));
 Module({
@@ -627,51 +616,131 @@ Module({
 }, (async (message) => {
     var isGroup = message.jid.endsWith('@g.us')
     if (!isGroup) return;
-    var user = message.mention[0] || message.reply_message.jid
+    var user = message.mention?.[0] || message.reply_message?.jid
     await message.client.updateBlockStatus(user, "unblock");
 }));
-
 Module({
     pattern: 'getjids ?(.*)', 
-    desc: 'Get all groups\' jids',
+    desc: 'Get group JIDs - all groups or recent chats',
     use: 'utility',
-    usage: '.getjids (shows all group JIDs)',
+    usage: '.getjids all (shows all group JIDs)\n.getjids recent (shows recent chat JIDs)\n.getjids recent 15 (shows 15 recent chats)',
     fromMe: true
 }, (async (message, match) => {
-    var allGroups = await message.client.groupFetchAllParticipating();
-    var groups = Object.keys(allGroups);
-    if (!groups.length) return await message.sendReply("No group chats!");
-
-    const chunkSize = 100;
-    let totalMessages = Math.ceil(groups.length / chunkSize);
-
-    for (let msgIndex = 0; msgIndex < totalMessages; msgIndex++) {
-        const startIdx = msgIndex * chunkSize;
-        const endIdx = Math.min(startIdx + chunkSize, groups.length);
-        const currentGroups = groups.slice(startIdx, endIdx);
-
-        let _msg = `*Group JIDs*\n`;
-        if (totalMessages > 1) {
-            _msg += `Part ${msgIndex + 1}/${totalMessages}: Groups ${startIdx + 1}-${endIdx} of ${groups.length}\n\n`;
+    const args = match[1]?.trim().split(' ') || [];
+    const command = args[0]?.toLowerCase();
+    if (!command || (command !== 'all' && command !== 'recent')) {
+        return await message.sendReply(
+            "*Usage:*\n" +
+            "• `.getjids all` - Show all group JIDs\n" +
+            "• `.getjids recent` - Show recent chat JIDs (default 10)\n" +
+            "• `.getjids recent 15` - Show 15 recent chat JIDs"
+        );
+    }    if (command === 'all') {
+        var allGroups = await message.client.groupFetchAllParticipating();
+        var groups = Object.keys(allGroups);
+        const recentChats = await fetchRecentChats(100); 
+        const dmChats = recentChats.filter(chat => chat.type === 'private');
+        const totalChats = groups.length + dmChats.length;
+        if (!totalChats) return await message.sendReply("No chats found!");
+        const chunkSize = 100;
+        let totalMessages = Math.ceil(totalChats / chunkSize);
+        let chatIndex = 0;
+        for (let msgIndex = 0; msgIndex < totalMessages; msgIndex++) {
+            const startIdx = msgIndex * chunkSize;
+            const endIdx = Math.min(startIdx + chunkSize, totalChats);
+            let _msg = `*All Chat JIDs*\n`;
+            if (totalMessages > 1) {
+                _msg += `Part ${msgIndex + 1}/${totalMessages}: Chats ${startIdx + 1}-${endIdx} of ${totalChats}\n\n`;
+            }
+            while (chatIndex < groups.length && (chatIndex - msgIndex * chunkSize) < chunkSize) {
+                const jid = groups[chatIndex - msgIndex * chunkSize];
+                if (!jid) break;
+                const count = chatIndex + 1;
+                const groupData = allGroups[jid];
+                const groupName = groupData ? groupData.subject : "Unknown Group";
+                _msg += `_*${count}. 👥 Group:*_ \`${groupName}\`\n_JID:_ \`${jid}\`\n\n`;
+                chatIndex++;
+                if (chatIndex >= startIdx + chunkSize) break;
+            }
+            const dmStartIndex = Math.max(0, startIdx - groups.length);
+            const dmEndIndex = Math.min(dmChats.length, endIdx - groups.length);
+            for (let i = dmStartIndex; i < dmEndIndex && chatIndex < endIdx; i++) {
+                const dm = dmChats[i];
+                const count = chatIndex + 1;
+                const dmName = dm.name || 'Unknown';
+                _msg += `_*${count}. 💬 Private*_: \`${dmName}\`\n_JID:_ \`${dm.jid}\`\n\n`;
+                chatIndex++;
+            }
+            await message.sendReply(_msg);
+            if (msgIndex < totalMessages - 1) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
         }
-
-        for (let i = 0; i < currentGroups.length; i++) {
-            const jid = currentGroups[i];
-            const count = startIdx + i + 1;
-            const groupData = allGroups[jid];
-            const groupName = groupData ? groupData.subject : "Unknown Group";
-
-            _msg += `*${count}.* _Group:_ ${groupName}\n_JID:_ \`${jid}\`\n\n`;
+    }
+      else if (command === 'recent') {
+        const limit = parseInt(args[1]) || 10;
+        if (limit > 50) {
+            return await message.sendReply("*Maximum limit is 50 chats!*");
         }
-
-        await message.sendReply(_msg);
-
-        if (msgIndex < totalMessages - 1) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+        const recentChats = await fetchRecentChats(limit);
+        if (!recentChats.length) {
+            return await message.sendReply("No recent chats found!");
+        }
+        let allGroups = {};
+        try {
+            allGroups = await message.client.groupFetchAllParticipating();
+        } catch (error) {
+            console.error('Error fetching group data:', error);
+        }
+        let _msg = `*Recent Chat JIDs*\n_Showing ${recentChats.length} most recent chats_\n\n`;
+        for (let i = 0; i < recentChats.length; i++) {
+            const chat = recentChats[i];
+            const count = i + 1;
+            const chatType = chat.type === 'group' ? '👥 Group' : '💬 Private';
+            let chatName = chat.name || 'Unknown';
+            if (chat.type === 'group' && allGroups[chat.jid]) {
+                chatName = allGroups[chat.jid].subject || chat.name || 'Unknown Group';
+            }
+            const lastMessageTime = new Date(chat.lastMessageTime).toLocaleString();
+            _msg += `_*${count}. ${chatType}:*_ \`${chatName}\`\n`;
+            _msg += `_JID:_ \`${chat.jid}\`\n`;
+            _msg += `_Last Message:_ ${lastMessageTime}\n\n`;
+        }
+        const chunkSize = 4000;
+        if (_msg.length > chunkSize) {
+            const chunks = [];
+            let currentChunk = `*Recent Chat JIDs*\n_Showing ${recentChats.length} most recent chats_\n\n`;
+            for (let i = 0; i < recentChats.length; i++) {
+                const chat = recentChats[i];
+                const count = i + 1;
+                const chatType = chat.type === 'group' ? '👥 Group' : '💬 Private';
+                let chatName = chat.name || 'Unknown';
+                if (chat.type === 'group' && allGroups[chat.jid]) {
+                    chatName = allGroups[chat.jid].subject || chat.name || 'Unknown Group';
+                }
+                const lastMessageTime = new Date(chat.lastMessageTime).toLocaleString();
+                const chatInfo = `_*${count}. ${chatType}:*_ \`${chatName}\`\n_JID:_ \`${chat.jid}\`\n_Last Message:_ ${lastMessageTime}\n\n`;
+                if (currentChunk.length + chatInfo.length > chunkSize) {
+                    chunks.push(currentChunk);
+                    currentChunk = chatInfo;
+                } else {
+                    currentChunk += chatInfo;
+                }
+            }
+            if (currentChunk.trim()) {
+                chunks.push(currentChunk);
+            }
+            for (let i = 0; i < chunks.length; i++) {
+                await message.sendReply(chunks[i]);
+                if (i < chunks.length - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+        } else {
+            await message.sendReply(_msg);
         }
     }
 }));
-
 Module({
     pattern: 'pp ?(.*)',
     fromMe: true,
@@ -685,7 +754,7 @@ Module({
     return await message.sendReply("*Updated profile pic ✅*")
 }
 if (message.reply_message && !message.reply_message.image) {
-   try { var image = await message.client.profilePictureUrl(message.reply_message.jid,'image') } catch {return await message.sendReply("Profile pic not found!")}
+   try { var image = await message.client.profilePictureUrl(message.reply_message?.jid,'image') } catch {return await message.sendReply("Profile pic not found!")}
    return await message.sendReply({url:image},"image")
 }
 }));

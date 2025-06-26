@@ -9,7 +9,7 @@ const {
     getWarn, setWarn, resetWarn,
     antilink, antiword, antifake,
     antipromote, antidemote, antispam,
-    antibot, pdm
+    antibot, pdm, welcome, goodbye
 } = dbOperations;
 
 // Media processing functions
@@ -33,14 +33,14 @@ const { malayalamToManglish, manglishToMalayalam } = language;
 
 const {gis, pinSearch} = require('./gis');
 
-const uploadImage = require("./imgbb");
+const uploadImage = require('./imgbb');
 
 module.exports = {
     // Database Operations
     getWarn, setWarn, resetWarn,
     antilink, antiword, antifake,
     antipromote, antidemote, antispam,
-    antibot, pdm,
+    antibot, pdm, welcome, goodbye,
     
     // Media Processing
     addExif, bass, circle, blur, attp,
